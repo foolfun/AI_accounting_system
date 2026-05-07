@@ -1,65 +1,128 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { BudgetCard } from "@/components/BudgetCard";
+import type { BudgetSummary, Transaction } from "@/types";
+import { formatCurrency, currentYear } from "@/lib/utils";
+
+export default function HomePage() {
+  const [summary, setSummary] = useState<BudgetSummary | null>(null);
+  const [recentTxs, setRecentTxs] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const year = currentYear();
+        const [budgetRes, txRes] = await Promise.all([
+          fetch(`/api/budgets/${year}`),
+          fetch(`/api/transactions?start_date=${year}-01-01&end_date=${year}-12-31`),
+        ]);
+        const budgetData = await budgetRes.json();
+        const txData = await txRes.json();
+
+        setSummary(budgetData);
+        setRecentTxs(txData.items?.slice(0, 5) || []);
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const year = currentYear();
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="max-w-5xl mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">首页总览</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{year} 年财务概览</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <Link
+          href="/chat"
+          className="px-4 py-2 bg-[var(--primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--primary-hover)] transition-colors"
+        >
+          AI 记账
+        </Link>
+      </div>
+
+      <BudgetCard summary={summary} loading={loading} />
+
+      {/* Recent Transactions */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-gray-700">最近消费</h2>
+          <Link href="/transactions" className="text-sm text-[var(--primary)] hover:underline">
+            查看全部 →
+          </Link>
         </div>
-      </main>
+
+        {recentTxs.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center shadow-sm">
+            <div className="text-3xl mb-2">📝</div>
+            <p className="text-gray-400 text-sm">暂无消费记录</p>
+            <Link href="/chat" className="text-sm text-[var(--primary)] mt-1 inline-block hover:underline">
+              去记一笔 →
+            </Link>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            {recentTxs.map((tx, i) => (
+              <div
+                key={tx.id}
+                className={`flex items-center justify-between px-5 py-3.5 ${
+                  i < recentTxs.length - 1 ? "border-b border-gray-50" : ""
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">{tx.categoryIcon || "📦"}</span>
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">
+                      {tx.note || tx.categoryName || "未分类"}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {tx.transactionDate} · {tx.categoryName}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-red-500">
+                  -{formatCurrency(tx.amount)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Quick Stats */}
+      {summary && summary.totalBudget && (
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+            <div className="text-xs text-gray-400 mb-1">日均预算</div>
+            <div className="text-lg font-bold text-gray-800">
+              {formatCurrency(Math.round(summary.totalBudget / 365))}
+              <span className="text-xs text-gray-400 font-normal"> / 天</span>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              已过 {new Date().getMonth() + 1} 个月
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+            <div className="text-xs text-gray-400 mb-1">月均支出</div>
+            <div className="text-lg font-bold text-gray-800">
+              {formatCurrency(Math.round(summary.totalSpent / Math.max(1, new Date().getMonth() + 1)))}
+              <span className="text-xs text-gray-400 font-normal"> / 月</span>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              {((summary.totalSpent / summary.totalBudget) * 100).toFixed(1)}% 预算已使用
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
