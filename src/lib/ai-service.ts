@@ -2,7 +2,7 @@ const AI_API_KEY = process.env.ANTHROPIC_API_KEY || process.env.DEEPSEEK_API_KEY
 const AI_BASE_URL = process.env.AI_BASE_URL || "https://api.deepseek.com/v1";
 const AI_MODEL = process.env.AI_MODEL || "deepseek-chat";
 
-const SYSTEM_PROMPT = `你是一个智能记账助手。用户会用自然语言描述消费、设置预算、查询账目、管理分类等。你需要理解用户意图并输出结构化JSON。
+const SYSTEM_PROMPT = `你是一个智能记账助手，也可以和用户自由聊天。用户会用自然语言描述消费、设置预算、查询账目、管理分类等，你需要理解用户意图并输出结构化JSON。但当用户发来非记账相关的消息（如打招呼、闲聊、问问题等），你应使用 general_chat 意图友好回复。
 
 ## 当前日期：${new Date().toISOString().split("T")[0]}
 ## 当前年份：${new Date().getFullYear()}
@@ -17,6 +17,7 @@ const SYSTEM_PROMPT = `你是一个智能记账助手。用户会用自然语言
 6. **update_transaction** — 修改记录。"刚刚那笔改成交通"、"那笔299记成日用品"。
 7. **delete_transaction** — 删除记录。"删除上一笔"。
 8. **create_category** — 创建新分类。"新增护肤分类"、"创建一个美妆分类"、"帮我加个数码分类"。
+9. **general_chat** — 自由聊天。用户发来非记账消息（如打招呼、闲聊、问天气、问你是谁等）时使用此意图友好回复。
 
 ## 分类规则（核心能力）
 
@@ -156,6 +157,14 @@ create_category 输出格式：
 }
 \`\`\`
 
+**general_chat:**
+\`\`\`json
+{
+  "intent": "general_chat",
+  "response": "你好！我是你的记账助手，有什么可以帮你的吗？"
+}
+\`\`\`
+
 ## 规则
 
 1. 金额必须 > 0。缺少金额时设置 needClarification: true，clarificationQuestion 追问。
@@ -163,7 +172,7 @@ create_category 输出格式：
 3. 时间默认今天。"昨天"=前一天，"前天"=前两天。
 4. 多笔消费拆分为 transactions 数组中的多个元素。
 5. 修改/删除时，target 用 "last" 表示最近一笔；用户指明的金额如"那笔299"则 target 填金额数字。
-6. **仅输出JSON，不要任何解释性文字，不要markdown代码块标记。**`;
+6. **仅输出JSON，不要任何解释性文字，不要markdown代码块标记。对于 general_chat 意图，response 字段内容应该自然友好、口语化。**`;
 
 interface AiParseRequest {
   message: string;
@@ -203,20 +212,53 @@ export async function parseUserMessage(request: AiParseRequest) {
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    return {
-      intent: "unknown",
-      needClarification: true,
-      clarificationQuestion: `抱歉，我没理解你的意思。能再说一遍吗？比如"今天午饭花了42元"。`,
-    };
+    return fallbackChat(request.message);
   }
 
   try {
-    return JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
+    // If AI identified it as non-accounting, try chat mode instead
+    if (parsed.intent === "unknown" && parsed.needClarification) {
+      return fallbackChat(request.message);
+    }
+    return parsed;
+  } catch {
+    return fallbackChat(request.message);
+  }
+}
+
+async function fallbackChat(message: string) {
+  try {
+    const res = await fetch(`${AI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        messages: [
+          { role: "system", content: "你是一个友好的AI助手，名叫「AI记账」。你可以帮助记账，也可以自由聊天。请用自然的语气简短回复（50字以内）。" },
+          { role: "user", content: message },
+        ],
+        max_tokens: 256,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`Chat API error: ${res.status}`);
+
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content || "你好呀~有什么可以帮你的吗？";
+
+    return {
+      intent: "general_chat",
+      response: reply,
+    };
   } catch {
     return {
-      intent: "unknown",
-      needClarification: true,
-      clarificationQuestion: `抱歉，解析出错了。请尝试用更简单的表达，比如"今天午饭花了42元"。`,
+      intent: "general_chat",
+      response: "你好呀~有什么可以帮你的吗？想记账的话直接说「今天午饭花了42元」就行~",
     };
   }
 }

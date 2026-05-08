@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect, KeyboardEvent } from "react";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -17,6 +17,13 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Refocus textarea when loading finishes
+  useEffect(() => {
+    if (!disabled && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [disabled]);
+
   const handleSend = () => {
     const msg = input.trim();
     if (!msg || disabled) return;
@@ -24,6 +31,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
     setInput("");
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
+      textareaRef.current.focus();
     }
   };
 
@@ -70,7 +78,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
         {quickActions.map((action) => (
           <button
             key={action.label}
-            onClick={() => setInput(action.text)}
+            onClick={() => { setInput(action.text); textareaRef.current?.focus(); }}
             disabled={disabled}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-40 transition-colors"
           >

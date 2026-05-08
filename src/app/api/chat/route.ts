@@ -45,8 +45,10 @@ export async function POST(request: NextRequest) {
 
     let responseText = "";
 
-    // Handle clarification needed
-    if (parsed.needClarification && parsed.clarificationQuestion) {
+    // Handle general chat
+    if (parsed.intent === "general_chat" && (parsed as any).response) {
+      responseText = (parsed as any).response;
+    } else if (parsed.needClarification && parsed.clarificationQuestion) {
       responseText = parsed.clarificationQuestion;
     } else {
       // Execute based on intent
@@ -387,7 +389,7 @@ async function executeIntent(
     }
 
     default:
-      return '抱歉，我没理解你的意思。你可以试试：\n- “今天午饭花了 42 元”（记一笔）\n- “今年餐饮预算 12000”（设预算）\n- “查看今年预算”（查预算）\n- “查看本月餐饮支出”（查明细）';
+      return '你好！我是你的 AI 记账助手。你可以跟我说：\n- 「今天午饭花了 42 元」（记一笔）\n- 「今年餐饮预算 12000」（设预算）\n- 「查看今年预算」（查预算）\n或者随便聊聊天也行~';
   }
 
   // Update related transaction IDs for chat messages
